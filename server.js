@@ -47,17 +47,30 @@ app.get('/create', async (req, res) => {
 
 app.get('/artists', async (req, res) => {
      try {
-        if (req.query && req.query.filter){
-            console.warn('filter -> ' + req.query.filter);
-            let artists = await Artist.findAll({name : {
-                [Op.like] : '%' + req.query.filter + '%'
-            }});
-            res.status(200).json(artists);
-        }
-        else{
-            let artists = await Artist.findAll();
-            res.status(200).json(artists);
-        }
+         let params = {
+	    	where : {},
+	    	order : [
+	    		['lastname','ASC'],
+	    		['firstname', 'ASC']
+	    	]
+	    };
+	    let pageSize = 10;
+	    if (req.query){
+	    	if (req.query.filter){
+	    		params.where.lastName = {
+	                [Op.like] : `%${req.query.filter}%`
+	            };
+	    	}
+	    	if (req.query.pageSize){
+	    		pageSize = parseInt(req.query.pageSize, 10);
+	    	}
+	    	if (req.query.pageNo){
+	    		params.limit = pageSize;
+	    		params.offset = parseInt(req.query.pageNo, 10) * pageSize;
+	    	}
+	    }
+        let artists = await Artist.findAll(params);
+		res.status(200).json(artists);
     } catch (e) {
         console.warn(e.stack);
         res.status(500).json({ message : 'server error', cause: e.message });
@@ -81,8 +94,14 @@ app.get('/artists/:id', async (req, res) => {
 
 app.post('/artists', async (req, res) => {
     try {
-        let artist = await Artist.create(req.body);
-        res.status(201).json({ message : 'created', id: artist.id });
+        if (req.query.bulk && req.query.bulk == 'on'){
+			await Artist.bulkCreate(req.body);
+			res.status(201).json({ message : 'created' });
+		}
+		else {
+		    let artist = await Artist.create(req.body);
+            res.status(201).json({ message : 'created', id: artist.id });    
+		}
     } catch (e) {
         console.warn(e.stack);
         res.status(500).json({ message : 'server error', cause: e.cause });
@@ -93,8 +112,7 @@ app.put('/artists/:id', async (req, res) => {
    try {
         let artist = await Artist.findById(req.params.id);
         if (artist){
-            // toDo
-            await artist.update(req.body, {fields : ['name', 'age']});
+            await artist.update(req.body, {fields : [ 'firstname', 'lastname', 'birthdate' ]});
             res.status(202).json({ message : 'accepted' });
         }
         else{
