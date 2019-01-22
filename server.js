@@ -2,7 +2,6 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const dbSchema = require('./databaseSchema');
-const csp = require('express-csp-header');
 
 let Artist = dbSchema.Artist;
 let Artwork = dbSchema.Artwork;
