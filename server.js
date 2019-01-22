@@ -2,8 +2,12 @@
 const express = require('express');
 const bodyParser = require('body-parser');
 const dbSchema = require('./databaseSchema');
+const csp = require('express-csp-header');
 
 let Artist = dbSchema.Artist;
+let Artwork = dbSchema.Artwork;
+let Album = dbSchema.Album;
+let Category = dbSchema.Category;
 let Op = dbSchema.Op;
 let sequelize = dbSchema.sequelize;
 
@@ -12,6 +16,8 @@ let app = express();
 app.get('/ping', (req, res) => {
     res.status(200).send('pong');
 });
+
+
 
 console.log('server started');
 
@@ -23,7 +29,7 @@ app.use((req, res, next) => {
 
 app.use(bodyParser.json());
 
-app.use(express.static('./artist-manager/build'));
+app.use(express.static('./artist-manager-front/build'));
 
 sequelize
   .authenticate()
@@ -140,15 +146,179 @@ app.delete('/artists/:id', async (req, res) => {
     }
 });
 
-//dbSchema.Artwork.findOne().then(artwork => { console.warn(artwork) });
+app.get('/artists/:id/artworks', async (req, res) => {
+    try {
+		let artist = await Artist.findById(req.params.id);
+		if (artist){
+			let artworks = await artist.getArtworks();
+			res.status(200).json(artworks);
+		}
+		else{
+			res.status(404).json({message : 'not found'});
+		}
+	} catch (e) {
+		console.warn(e.stack);
+		res.status(500).json({ message : 'server error', cause: e.cause });
+	}
+});
 
-//Artwork.findOne().then(artwork => { console.warn(artwork) });
-// Artwork.findOne().then(artwork => {
-//   console.log(artwork);
-// });
+app.post('/artists/:id/artworks', async (req, res) => {
+	try {
+		let artist = await Artist.findById(req.params.id);
+		if (artist){
+			let artwork = req.body;
+			artwork.artistId = artist.id;
+			await Artwork.create(artwork);
+			res.status(201).json({ message : 'created' });
+		}
+		else{
+			res.status(404).json({ message : 'not found' });
+		}
+	} catch (e) {
+		console.warn(e.stack);
+		res.status(500).json({ message : 'server error', cause: e.cause });
+	}
+});
 
-app.listen(process.env.PORT || 8080 , process.env.IP || "0.0.0.0");
-// app.listen(process.env.PORT || 3000, process.env.IP || "0.0.0.0", function(){
-//   //var addr = app.address();
-//   //console.log("Chat server listening at", addr.address + ":" + addr.port);
-// });
+app.put('/artists/:aid/artworks/:wid', async (req, res) => {
+	try {
+		let artist = await Artist.findById(req.params.aid);
+		if (!artist){
+			res.status(404).json({message : 'not found'});
+		}
+		else{
+			let artworks = await artist.getArtworks({ where : { id : req.params.wid }});
+			let artwork = artworks.shift();
+			if (!artwork){
+				res.status(404).json({ message : 'not found' });
+			}
+			else{
+				await artwork.update(req.body);
+				res.status(202).json({ message : 'accepted'});
+			}
+		}
+	} catch (e) {
+		console.warn(e.stack);
+		res.status(500).json({ message : 'server error', cause: e.cause });
+	}
+});
+
+app.delete('/artists/:aid/artworks/:wid', async (req, res) => {
+	try {
+	    let artist = await Artist.findById(req.params.aid);
+		if (!artist){
+			res.status(404).json({ message : 'not found' });
+		}
+		else{
+			let artworks = await artist.getArtworks({ where : { id : req.params.wid }});
+			let artwork = artworks.shift();
+			if (!artwork){
+				res.status(404).json({message : 'not found'});
+			}
+			else{
+				await artwork.destroy();
+				res.status(202).json({message : 'accepted'});
+			}
+		}
+	} catch (e) {
+		console.warn(e.stack);
+		res.status(500).json({ message : 'server error', cause: e.cause });
+	}
+});
+
+app.get('/artworks', async (req, res) => {
+     try {
+         let params = {
+	    	where : {},
+	    	order : [
+	    		['name','ASC'],
+	    		['year', 'ASC']
+	    	]
+	    };
+	    let pageSize = 10;
+	    if (req.query){
+	    	if (req.query.filter){
+	    		params.where.name = {
+	                [Op.like] : `%${req.query.filter}%`
+	            };
+	    	}
+	    	if (req.query.pageSize){
+	    		pageSize = parseInt(req.query.pageSize, 10);
+	    	}
+	    	if (req.query.pageNo){
+	    		params.limit = pageSize;
+	    		params.offset = parseInt(req.query.pageNo, 10) * pageSize;
+	    	}
+	    }
+        let artworks = await Artwork.findAll(params);
+		res.status(200).json(artworks);
+    } catch (e) {
+        console.warn(e.stack);
+        res.status(500).json({ message : 'server error', cause: e.message });
+    }
+});
+
+app.get('/artworks/:id', async (req, res) => {
+    try {
+        let artwork = await Artwork.findById(req.params.id);
+        if (artwork){
+            res.status(200).json(artwork);
+        }
+        else{
+            res.status(404).json({ message : 'not found' });
+        }
+    } catch (e) {
+        console.warn(e.stack);
+        res.status(500).json({ message : 'server error', cause: e.cause });
+    }
+});
+
+app.post('/artworks', async (req, res) => {
+    try {
+        if (req.query.bulk && req.query.bulk == 'on'){
+			await Artwork.bulkCreate(req.body);
+			res.status(201).json({ message : 'created' });
+		}
+		else {
+		    let artwork = await Artwork.create(req.body);
+            res.status(201).json({ message : 'created', id: artwork.id });    
+		}
+    } catch (e) {
+        console.warn(e.stack);
+        res.status(500).json({ message : 'server error', cause: e.cause });
+    }
+});
+
+app.put('/artworks/:id', async (req, res) => {
+   try {
+        let artwork = await Artwork.findById(req.params.id);
+        if (artwork){
+            await artwork.update(req.body, { fields : [ 'name', 'year' ]});
+            res.status(202).json({ message : 'accepted' });
+        }
+        else{
+            res.status(404).json({ message : 'not found' });
+        }
+    } catch (e) {
+        console.warn(e.stack);
+        res.status(500).json({ message : 'server error', cause: e.cause });   
+    }
+});
+
+app.delete('/artworks/:id', async (req, res) => {
+   try {
+   	    let artwork = await Artwork.findById( req.params.id );
+        if (artwork){
+            await artwork.destroy();
+            res.status(202).json({ message : 'accepted' });
+        }
+        else{
+            res.status(404).json({ message : 'not found' });
+        }
+    } catch (e) {
+        console.warn(e.stack);
+        res.status(500).json({ message : 'server error', cause: e.cause });
+    }
+});
+
+app.listen(process.env.PORT || 8080 , process.env.IP || "0.0.0.0"); 
